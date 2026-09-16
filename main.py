@@ -19,14 +19,23 @@ def run_web_server():
     server.serve_forever()
 
 # --- 2. Telegram Bot Logic ---
-# Pulling securely from Render's Environment Variables
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
 async def get_available_slots(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Check if the user provided a day argument (e.g., /slots monday)
+    args = context.args
+    target_day = args[0].lower() if args else "today"
+
     url = "https://jdemenato.cz/reservation/prazacka/reservationcalendaroverview"
     
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
     try:
-        response = requests.get(url)
+        # Note: If jdemenato.cz requires form submission/cookies for specific days, 
+        # you would map the target_day here. For now, it fetches the default calendar view.
+        response = requests.get(url, headers=headers)
         response.raise_for_status()
         
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -41,9 +50,9 @@ async def get_available_slots(update: Update, context: ContextTypes.DEFAULT_TYPE
                 free_slots.append(time_header.get_text(strip=True))
 
         if free_slots:
-            message = "⚽ **Available Pitch Slots:**\n" + "\n".join([f"• {slot}" for slot in set(free_slots)])
+            message = f"⚽ **Available Pitch Slots ({target_day.capitalize()}):**\n" + "\n".join([f"• {slot}" for slot in set(free_slots)])
         else:
-            message = "No free slots found or page structure changed."
+            message = f"No free slots found for {target_day}."
             
     except Exception as e:
         message = f"Error fetching slots: {str(e)}"
@@ -54,11 +63,9 @@ def main():
     if not TOKEN:
         raise ValueError("No TELEGRAM_TOKEN found in environment variables!")
 
-    # Start the web server in a separate background thread
     server_thread = threading.Thread(target=run_web_server, daemon=True)
     server_thread.start()
 
-    # Start the Telegram Bot
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("slots", get_available_slots))
     
