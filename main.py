@@ -27,14 +27,13 @@ async def get_available_slots(update: Update, context: ContextTypes.DEFAULT_TYPE
     url = "https://jdemenato.cz/reservation/prazacka/reservationcalendaroverview"
     
     try:
-        # Use Playwright (headless browser) to bypass Cloudflare
+        # Use Playwright to cleanly bypass Cloudflare's JS challenge
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
             
-            # Go to the site and wait for Cloudflare/content to load
             await page.goto(url, timeout=60000)
-            await page.wait_for_timeout(3000) # Give 3 seconds for JS/Cloudflare to clear
+            await page.wait_for_timeout(3000) # Wait for Cloudflare validation to clear
             
             html_content = await page.content()
             await browser.close()
@@ -58,7 +57,9 @@ async def get_available_slots(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         message = f"Error fetching slots: {str(e)}"
 
-    await update.message.reply_text(message, parse_mode="Markdown")
+    # Safely reply using effective_message to prevent NoneType crashes
+    if update.effective_message:
+        await update.effective_message.reply_text(message, parse_mode="Markdown")
 
 def main():
     if not TOKEN:
