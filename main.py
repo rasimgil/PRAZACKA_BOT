@@ -1,8 +1,8 @@
 import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import requests
 from bs4 import BeautifulSoup
+from playwright.async_api import async_playwright
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
@@ -22,23 +22,24 @@ def run_web_server():
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
 async def get_available_slots(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Check if the user provided a day argument (e.g., /slots monday)
     args = context.args
     target_day = args[0].lower() if args else "today"
-
     url = "https://jdemenato.cz/reservation/prazacka/reservationcalendaroverview"
     
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    
     try:
-        # Note: If jdemenato.cz requires form submission/cookies for specific days, 
-        # you would map the target_day here. For now, it fetches the default calendar view.
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
+        # Use Playwright (headless browser) to bypass Cloudflare
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            
+            # Go to the site and wait for Cloudflare/content to load
+            await page.goto(url, timeout=60000)
+            await page.wait_for_timeout(3000) # Give 3 seconds for JS/Cloudflare to clear
+            
+            html_content = await page.content()
+            await browser.close()
+            
+        soup = BeautifulSoup(html_content, 'html.parser')
         free_slots = []
         rows = soup.find_all('tr')
         
